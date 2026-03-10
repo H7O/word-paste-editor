@@ -1,62 +1,106 @@
 /**
- * Editor – minimal contenteditable HTML editor with Word-paste support.
+ * WordPasteEditor – minimal contenteditable HTML editor with Word-paste support.
  * Zero dependencies (uses WordCleaner from word-cleaner.js).
+ *
+ * @param {string|HTMLElement} element - The contenteditable element or CSS selector.
+ * @param {Object} [options]
+ * @param {string|HTMLElement} [options.sourceView] - Textarea element or selector for HTML source view.
+ * @param {string|HTMLElement} [options.sourceToggle] - Button element or selector to toggle source view.
+ * @param {string} [options.placeholder] - Placeholder text for the editor.
  */
-(function () {
+(function (root, factory) {
+  if (typeof define === "function" && define.amd) {
+    define(["./word-cleaner"], factory);
+  } else if (typeof module === "object" && module.exports) {
+    module.exports = factory(require("./word-cleaner"));
+  } else {
+    root.WordPasteEditor = factory(root.WordCleaner);
+  }
+})(typeof self !== "undefined" ? self : this, function (WordCleaner) {
   "use strict";
 
-  var editor = document.getElementById("editor");
-  var sourceView = document.getElementById("sourceView");
-  var modeToggle = document.getElementById("modeToggle");
-  var isSourceMode = false;
-
-  // ────────── Paste handling ──────────────────────────────────
-
-  editor.addEventListener("paste", function (e) {
-    // Grab the HTML flavour from the clipboard
-    var clipboardData = e.clipboardData || window.clipboardData;
-    if (!clipboardData) return;
-
-    var html = clipboardData.getData("text/html");
-    var plainText = clipboardData.getData("text/plain");
-
-    // If there's HTML content, clean it and insert
-    if (html) {
-      e.preventDefault();
-
-      var cleaned = WordCleaner.clean(html);
-
-      // Insert the cleaned HTML at the current cursor position
-      insertHTML(cleaned);
-      return;
+  function WordPasteEditor(element, options) {
+    if (!(this instanceof WordPasteEditor)) {
+      return new WordPasteEditor(element, options);
     }
 
-    // If only plain text, let the browser handle it naturally
-    // (or we could manually insert to avoid <div> wrapping quirks)
-    if (plainText && !html) {
-      e.preventDefault();
-      // Convert line breaks to <br> and insert
-      var escaped = escapeHTML(plainText);
-      escaped = escaped.replace(/\n/g, "<br>");
-      insertHTML(escaped);
+    this._editor = resolve(element);
+    if (!this._editor) throw new Error("WordPasteEditor: element not found");
+
+    options = options || {};
+    this._isSourceMode = false;
+
+    if (!this._editor.isContentEditable) {
+      this._editor.contentEditable = "true";
     }
-  });
 
-  // ────────── Insertion helper ────────────────────────────────
+    if (options.placeholder && !this._editor.getAttribute("data-placeholder")) {
+      this._editor.setAttribute("data-placeholder", options.placeholder);
+    }
 
-  /** Insert HTML at the current selection/cursor position in the editor. */
-  function insertHTML(html) {
-    // Modern approach: insertHTML command
-    if (document.queryCommandSupported && document.queryCommandSupported("insertHTML")) {
+    this._sourceView = options.sourceView
+      ? resolve(options.sourceView)
+      : null;
+    this._toggle = options.sourceToggle
+      ? resolve(options.sourceToggle)
+      : null;
+
+    this._handlers = {};
+    this._setupPaste();
+    this._setupDrop();
+    this._setupKeyboard();
+
+    if (this._toggle && this._sourceView) {
+      this._setupSourceToggle();
+    }
+
+    this._editor.focus();
+  }
+
+  function resolve(el) {
+    return typeof el === "string" ? document.querySelector(el) : el;
+  }
+
+  // ────────── Paste handling ─────────────────────────────────
+
+  WordPasteEditor.prototype._setupPaste = function () {
+    var self = this;
+    this._handlers.paste = function (e) {
+      var clipboardData = e.clipboardData || window.clipboardData;
+      if (!clipboardData) return;
+
+      var html = clipboardData.getData("text/html");
+      var plainText = clipboardData.getData("text/plain");
+
+      if (html) {
+        e.preventDefault();
+        self._insertHTML(WordCleaner.clean(html));
+        return;
+      }
+
+      if (plainText && !html) {
+        e.preventDefault();
+        var escaped = escapeHTML(plainText).replace(/\n/g, "<br>");
+        self._insertHTML(escaped);
+      }
+    };
+    this._editor.addEventListener("paste", this._handlers.paste);
+  };
+
+  // ────────── Insertion helper ───────────────────────────────
+
+  WordPasteEditor.prototype._insertHTML = function (html) {
+    if (
+      document.queryCommandSupported &&
+      document.queryCommandSupported("insertHTML")
+    ) {
       document.execCommand("insertHTML", false, html);
       return;
     }
 
-    // Fallback: manual range insertion
     var sel = window.getSelection();
     if (!sel || sel.rangeCount === 0) {
-      // No selection, just append
-      editor.innerHTML += html;
+      this._editor.innerHTML += html;
       return;
     }
 
@@ -67,7 +111,6 @@
     var lastNode = frag.lastChild;
     range.insertNode(frag);
 
-    // Move cursor to end of inserted content
     if (lastNode) {
       var newRange = document.createRange();
       newRange.setStartAfter(lastNode);
@@ -75,36 +118,37 @@
       sel.removeAllRanges();
       sel.addRange(newRange);
     }
-  }
+  };
 
-  /** Escape HTML special chars for plain-text insertion. */
   function escapeHTML(text) {
     var div = document.createElement("div");
     div.appendChild(document.createTextNode(text));
     return div.innerHTML;
   }
 
-  // ────────── Source view toggle ──────────────────────────────
+  // ────────── Source view toggle ─────────────────────────────
 
-  modeToggle.addEventListener("click", function () {
-    isSourceMode = !isSourceMode;
+  WordPasteEditor.prototype._setupSourceToggle = function () {
+    var self = this;
+    this._handlers.toggle = function () {
+      self._isSourceMode = !self._isSourceMode;
 
-    if (isSourceMode) {
-      // Switch to source view
-      sourceView.value = formatHTML(editor.innerHTML);
-      editor.style.display = "none";
-      sourceView.style.display = "block";
-      modeToggle.textContent = "View Editor";
-      sourceView.focus();
-    } else {
-      // Switch back to editor
-      editor.innerHTML = sourceView.value;
-      sourceView.style.display = "none";
-      editor.style.display = "block";
-      modeToggle.textContent = "View Source";
-      editor.focus();
-    }
-  });
+      if (self._isSourceMode) {
+        self._sourceView.value = formatHTML(self._editor.innerHTML);
+        self._editor.style.display = "none";
+        self._sourceView.style.display = "block";
+        self._toggle.textContent = "View Editor";
+        self._sourceView.focus();
+      } else {
+        self._editor.innerHTML = self._sourceView.value;
+        self._sourceView.style.display = "none";
+        self._editor.style.display = "block";
+        self._toggle.textContent = "View Source";
+        self._editor.focus();
+      }
+    };
+    this._toggle.addEventListener("click", this._handlers.toggle);
+  };
 
   // ────────── Simple HTML formatter for source view ──────────
 
@@ -153,57 +197,82 @@
     return result;
   }
 
-  // ────────── Drop handling (treat like paste) ───────────────
+  // ────────── Drop handling ──────────────────────────────────
 
-  editor.addEventListener("drop", function (e) {
-    var dt = e.dataTransfer;
-    if (!dt) return;
+  WordPasteEditor.prototype._setupDrop = function () {
+    var self = this;
+    this._handlers.drop = function (e) {
+      var dt = e.dataTransfer;
+      if (!dt) return;
 
-    var html = dt.getData("text/html");
-    if (html) {
-      e.preventDefault();
-      var cleaned = WordCleaner.clean(html);
-      // Place cursor at drop position
-      var range;
-      if (document.caretRangeFromPoint) {
-        range = document.caretRangeFromPoint(e.clientX, e.clientY);
-      } else if (e.rangeParent) {
-        range = document.createRange();
-        range.setStart(e.rangeParent, e.rangeOffset);
+      var html = dt.getData("text/html");
+      if (html) {
+        e.preventDefault();
+        var cleaned = WordCleaner.clean(html);
+        var range;
+        if (document.caretRangeFromPoint) {
+          range = document.caretRangeFromPoint(e.clientX, e.clientY);
+        } else if (e.rangeParent) {
+          range = document.createRange();
+          range.setStart(e.rangeParent, e.rangeOffset);
+        }
+
+        if (range) {
+          var sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+
+        self._insertHTML(cleaned);
       }
+    };
 
-      if (range) {
-        var sel = window.getSelection();
-        sel.removeAllRanges();
-        sel.addRange(range);
-      }
-
-      insertHTML(cleaned);
-    }
-  });
-
-  // Prevent default dragover to allow drop
-  editor.addEventListener("dragover", function (e) {
-    e.preventDefault();
-  });
-
-  // ────────── Keyboard shortcut: Ctrl+Shift+V = paste as plain text ──
-
-  editor.addEventListener("keydown", function (e) {
-    // Ctrl+Shift+V — the browser may already handle this, but just in case
-    if (e.ctrlKey && e.shiftKey && e.key === "V") {
-      // Let browser handle paste-as-plain-text
-      return;
-    }
-
-    // Tab key — insert spaces instead of moving focus
-    if (e.key === "Tab") {
+    this._handlers.dragover = function (e) {
       e.preventDefault();
-      insertHTML("&nbsp;&nbsp;&nbsp;&nbsp;");
+    };
+
+    this._editor.addEventListener("drop", this._handlers.drop);
+    this._editor.addEventListener("dragover", this._handlers.dragover);
+  };
+
+  // ────────── Keyboard shortcuts ─────────────────────────────
+
+  WordPasteEditor.prototype._setupKeyboard = function () {
+    var self = this;
+    this._handlers.keydown = function (e) {
+      if (e.key === "Tab") {
+        e.preventDefault();
+        self._insertHTML("&nbsp;&nbsp;&nbsp;&nbsp;");
+      }
+    };
+    this._editor.addEventListener("keydown", this._handlers.keydown);
+  };
+
+  // ────────── Public API ─────────────────────────────────────
+
+  /** Get the editor's HTML content. */
+  WordPasteEditor.prototype.getHTML = function () {
+    return this._editor.innerHTML;
+  };
+
+  /** Set the editor's HTML content. */
+  WordPasteEditor.prototype.setHTML = function (html) {
+    this._editor.innerHTML = html;
+  };
+
+  /** Remove all event listeners and clean up. */
+  WordPasteEditor.prototype.destroy = function () {
+    this._editor.removeEventListener("paste", this._handlers.paste);
+    this._editor.removeEventListener("drop", this._handlers.drop);
+    this._editor.removeEventListener("dragover", this._handlers.dragover);
+    this._editor.removeEventListener("keydown", this._handlers.keydown);
+    if (this._toggle && this._handlers.toggle) {
+      this._toggle.removeEventListener("click", this._handlers.toggle);
     }
-  });
+  };
 
-  // ────────── Init ───────────────────────────────────────────
+  /** Expose WordCleaner as a static property for convenience. */
+  WordPasteEditor.WordCleaner = WordCleaner;
 
-  editor.focus();
-})();
+  return WordPasteEditor;
+});

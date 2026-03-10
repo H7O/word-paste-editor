@@ -1,0 +1,50 @@
+{
+  "name": "word-paste-editor",
+  "version": "1.0.0",
+  "description": "A zero-dependency, toolbar-free HTML editor that properly handles paste from Microsoft Word — preserving tables, cell colors, fonts, formatting, and more.",
+  "main": "dist/editor.js",
+  "exports": {
+    ".": "./dist/editor.js",
+    "./cleaner": "./dist/word-cleaner.js"
+  },
+  "files": [
+    "dist/",
+    "editor.js",
+    "word-cleaner.js",
+    "editor.html",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "build:editor": "terser editor.js -o dist/editor.min.js --comments \"/^!/\" --compress --mangle",
+    "build:cleaner": "terser word-cleaner.js -o dist/word-cleaner.min.js --comments \"/^!/\" --compress --mangle",
+    "copy:editor": "node -e \"require('fs').copyFileSync('editor.js','dist/editor.js')\"",
+    "copy:cleaner": "node -e \"require('fs').copyFileSync('word-cleaner.js','dist/word-cleaner.js')\"",
+    "build": "node -e \"require('fs').mkdirSync('dist',{recursive:true})\" && npm run copy:editor && npm run copy:cleaner && npm run build:editor && npm run build:cleaner",
+    "demo": "npx serve ."
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/H7O/word-paste-editor.git"
+  },
+  "keywords": [
+    "word",
+    "paste",
+    "html",
+    "cleaner",
+    "editor",
+    "sanitizer",
+    "contenteditable",
+    "clipboard",
+    "word-to-html"
+  ],
+  "author": "Hussein Al Bayati",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/H7O/word-paste-editor/issues"
+  },
+  "homepage": "https://github.com/H7O/word-paste-editor",
+  "devDependencies": {
+    "terser": "^5.31.0"
+  }
+}

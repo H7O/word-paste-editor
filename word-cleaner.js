@@ -7,7 +7,15 @@
  * Usage:
  *   const clean = WordCleaner.clean(dirtyHtml);
  */
-var WordCleaner = (function () {
+(function (root, factory) {
+  if (typeof define === "function" && define.amd) {
+    define([], factory);
+  } else if (typeof module === "object" && module.exports) {
+    module.exports = factory();
+  } else {
+    root.WordCleaner = factory();
+  }
+}(typeof self !== "undefined" ? self : this, function () {
   "use strict";
 
   // ───────────────────────── helpers ──────────────────────────
@@ -747,4 +755,4 @@ var WordCleaner = (function () {
     clean: clean,
     isWordHTML: isWordHTML,
   };
-})();
+}));
