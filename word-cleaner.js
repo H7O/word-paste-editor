@@ -685,7 +685,7 @@
         var next = paras[i].nextElementSibling;
         if (prev && next) {
           // Replace with a <br>
-          var br = doc.createElement("br");
+          var br = doc.ownerDocument.createElement("br");
           paras[i].parentNode.replaceChild(br, paras[i]);
         } else {
           paras[i].parentNode && paras[i].parentNode.removeChild(paras[i]);
