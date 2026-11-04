@@ -193,9 +193,13 @@
     // Merge MSO-converted extras (they take lower precedence — don't overwrite
     // explicit values already found).
     for (var key in msoExtras) {
-      if (!kept[key]) {
-        kept[key] = msoExtras[key];
-      }
+      if (kept[key]) continue;
+      // mso-border-*-alt is the border Word keeps for itself. When the
+      // element sets its own border (Word's paragraph borders use
+      // "border:none" and draw one line on a wrapping div), that is what a
+      // browser should show; the alt would underline every paragraph.
+      if (/^border-/.test(key) && kept["border"]) continue;
+      kept[key] = msoExtras[key];
     }
 
     // Remove "background-color: transparent" and similar no-ops

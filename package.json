@@ -1,6 +1,6 @@
 {
   "name": "word-paste-editor",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "A zero-dependency HTML editor that properly handles paste from Microsoft Word — preserving tables, cell colors, fonts, formatting, and more. Toolbar-free by default, with an optional formatting toolbar.",
   "main": "dist/editor.js",
   "exports": {
