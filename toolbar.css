@@ -1,0 +1,217 @@
+/* word-paste-editor – formatting toolbar (new WordPasteEditor(el, { toolbar: true })) */
+
+.wpe-toolbar {
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px;
+    box-sizing: border-box;
+    padding: 4px;
+    border: 1px solid #ccc;
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+    background: #f9fafb;
+    font-family: inherit;
+    font-size: 13px;
+    color: #374151;
+}
+
+.wpe-tb-btn {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 28px;
+    height: 28px;
+    padding: 0 6px;
+    margin: 0;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.wpe-tb-btn:hover {
+    background: #e8f0f8;
+    border-color: #a8c4df;
+    color: #005596;
+}
+
+.wpe-tb-btn.is-active,
+.wpe-tb-btn[aria-expanded="true"] {
+    background: #dbe7f3;
+    border-color: #a8c4df;
+    color: #005596;
+}
+
+/* While the source view is showing */
+.wpe-tb-btn:disabled {
+    background: transparent;
+    border-color: transparent;
+    color: inherit;
+    opacity: 0.4;
+    cursor: default;
+}
+
+.wpe-tb-btn:focus-visible,
+.wpe-tb-swatch:focus-visible,
+.wpe-tb-textbtn:focus-visible {
+    outline: 2px solid #3b82f6;
+    outline-offset: 1px;
+}
+
+.wpe-tb-btn svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.wpe-tb-glyph {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 15px;
+    line-height: 16px;
+}
+
+.wpe-tb-bar {
+    display: block;
+    width: 16px;
+    height: 3px;
+    margin-top: 2px;
+    border-radius: 1px;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+
+.wpe-tb-sep {
+    width: 1px;
+    height: 20px;
+    margin: 0 4px;
+    background: #d1d5db;
+}
+
+/* The editor's top corners meet the toolbar. */
+.wpe-toolbar + [contenteditable] {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+}
+
+/* ── Popovers (colours, link) ───────────────────────────────── */
+
+.wpe-tb-pop {
+    position: absolute;
+    top: 100%;
+    z-index: 1000;
+    margin-top: 2px;
+    padding: 8px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    background: #fff;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+.wpe-tb-swatches {
+    display: grid;
+    grid-template-columns: repeat(10, 18px);
+    gap: 3px;
+}
+
+.wpe-tb-swatch {
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    margin: 0;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.wpe-tb-swatch:hover {
+    outline: 2px solid #005596;
+    outline-offset: 1px;
+}
+
+.wpe-tb-pop-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.wpe-tb-textbtn {
+    padding: 4px 10px;
+    margin: 0;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    background: #fff;
+    color: #374151;
+    font: inherit;
+    cursor: pointer;
+}
+
+.wpe-tb-textbtn:hover {
+    background: #e8f0f8;
+    border-color: #a8c4df;
+    color: #005596;
+}
+
+.wpe-tb-primary {
+    background: #005596;
+    border-color: #005596;
+    color: #fff;
+}
+
+.wpe-tb-primary:hover {
+    background: #00467c;
+    border-color: #00467c;
+    color: #fff;
+}
+
+.wpe-tb-more {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+}
+
+.wpe-tb-more input[type="color"] {
+    width: 24px;
+    height: 20px;
+    padding: 0;
+    border: 1px solid #d1d5db;
+    border-radius: 3px;
+    background: none;
+    cursor: pointer;
+}
+
+.wpe-tb-label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-weight: 600;
+}
+
+.wpe-tb-label input[type="text"] {
+    width: 300px;
+    padding: 5px 8px;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    font: inherit;
+    font-weight: normal;
+}
+
+.wpe-tb-err {
+    margin-top: 6px;
+    color: #b91c1c;
+    font-size: 12px;
+}
+
+.wpe-tb-err[hidden] {
+    display: none;
+}

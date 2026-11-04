@@ -256,142 +256,203 @@
   /**
    * Word doesn't use real <ul>/<ol>. Instead it uses:
    *   <p class=MsoListParagraph style='mso-list:l0 level1 lfo1'>
-   *     <!--[if !supportLists]--><span>1.<span>&nbsp;</span></span><!--[endif]-->
+   *     <![if !supportLists]><span>1.<span>&nbsp;</span></span><![endif]>
    *     Item text
    *   </p>
    *
-   * We detect these and group consecutive list paragraphs into proper lists.
+   * The marker between the supportLists comments is the number or bullet
+   * Word displayed. preCleanHTML wraps it in <span class="__list-marker">.
+   *
+   * Numbered items keep that marker as literal text at the start of the
+   * paragraph, so the numbers match Word exactly. That covers numbers like
+   * "2.1" or "(a)", numbering that continues after other paragraphs, and
+   * serial-number columns in tables, where every cell is a one-item list.
+   * Consecutive bulleted items are grouped into proper <ul> lists.
+   *
+   * @param {Element} doc - Root to search (the parsed body).
+   * @param {Object} listDefs - From parseListDefinitions: "l0:1" → true when
+   *   that list level is bulleted.
    */
-  function convertLists(doc) {
-    var listParas = doc.querySelectorAll(
-      'p[class*="MsoList"], p[class*="msoList"]'
-    );
-    if (listParas.length === 0) {
-      // Also try matching by style attribute containing mso-list
-      listParas = doc.querySelectorAll("p");
-      listParas = Array.prototype.filter.call(listParas, function (p) {
-        return (
-          p.getAttribute("style") &&
-          /mso-list\s*:/i.test(p.getAttribute("style"))
-        );
-      });
-    }
-    if (listParas.length === 0) return;
+  function convertLists(doc, listDefs) {
+    var paras = doc.querySelectorAll("p, h1, h2, h3, h4, h5, h6");
+    var bullets = [];
 
-    // Parse list metadata from each paragraph
-    var items = [];
-    for (var i = 0; i < listParas.length; i++) {
-      var p = listParas[i];
-      var style = p.getAttribute("style") || "";
-      var levelMatch = style.match(/level(\d+)/);
-      var level = levelMatch ? parseInt(levelMatch[1], 10) : 1;
+    for (var i = 0; i < paras.length; i++) {
+      var p = paras[i];
+      var marker = findListMarker(p);
+      if (!marker) continue;
 
-      // Determine if numbered or bulleted by looking at the list marker
-      var markerText = "";
-      // The marker is usually in a conditional comment or a span before the real text
-      var firstChild = p.firstChild;
-      if (firstChild && firstChild.nodeType === 8) {
-        // comment node
-        // skip conditional comment markers
-      }
-
-      // Extract marker: look for the supportLists pattern and grab text before real content
-      var rawHTML = p.innerHTML;
-      var cleaned = rawHTML
-        .replace(/<!--\[if !supportLists\]-->[\s\S]*?<!--\[endif\]-->/gi, "")
-        .trim();
-
-      // Try to detect ordered vs unordered from the raw marker text
-      var markerMatch = rawHTML.match(
-        /<!--\[if !supportLists\]-->([\s\S]*?)<!--\[endif\]-->/i
+      var listMatch = (p.getAttribute("style") || "").match(
+        /mso-list\s*:\s*(l\d+)\s+level(\d+)/i
       );
-      var isOrdered = false;
-      if (markerMatch) {
-        var markerHTML = markerMatch[1];
-        var tmp = document.createElement("div");
-        tmp.innerHTML = markerHTML;
-        markerText = (tmp.textContent || "").trim();
-        // If marker starts with a digit or letter followed by . or ), it's ordered
-        isOrdered = /^[0-9a-zA-Z]+[.)]/.test(markerText);
-      } else {
-        // If no conditional comment, try looking at first text content
-        var textContent = (p.textContent || "").trim();
-        // Check for bullet chars
-        if (/^[·•‣◦▪▸►–-]/.test(textContent)) {
-          isOrdered = false;
-          // Remove the leading bullet from cleaned content
-          cleaned = cleaned.replace(/^[·•‣◦▪▸►–\-]\s*/, "");
-        } else if (/^[0-9]+[.)]/.test(textContent)) {
-          isOrdered = true;
-          cleaned = cleaned.replace(/^[0-9]+[.)]\s*/, "");
-        }
+      var level = listMatch ? parseInt(listMatch[2], 10) : 1;
+      var text = (marker.textContent || "").replace(/[\s ]+/g, " ").trim();
+      var defKey = listMatch ? listMatch[1].toLowerCase() + ":" + level : "";
+      var isBullet = listDefs.hasOwnProperty(defKey)
+        ? listDefs[defKey]
+        : isBulletMarker(text, marker);
+
+      var markerStyle = findMarkerStyle(marker);
+      marker.parentNode.removeChild(marker);
+
+      if (isBullet) {
+        bullets.push({ element: p, level: level, content: p.innerHTML });
+        continue;
       }
 
-      items.push({
-        element: p,
-        level: level,
-        ordered: isOrdered,
-        content: cleaned,
-      });
+      dropHangingIndent(p, level);
+      if (!text) continue; // numbering format "none"
+
+      var ownerDoc = p.ownerDocument;
+      var number = ownerDoc.createTextNode(text);
+      if (markerStyle) {
+        var span = ownerDoc.createElement("span");
+        span.setAttribute("style", markerStyle);
+        span.appendChild(number);
+        number = span;
+      }
+
+      if (hasContent(p)) {
+        p.insertBefore(ownerDoc.createTextNode(" "), p.firstChild);
+      } else {
+        // Only Word's empty-paragraph filler is left (as in a serial-number
+        // cell), and it would push the number off centre.
+        while (p.firstChild) p.removeChild(p.firstChild);
+      }
+      p.insertBefore(number, p.firstChild);
     }
 
-    // Group consecutive items into lists
+    // Markers outside a paragraph are padding and stray numbers.
+    var leftovers = doc.querySelectorAll("span.__list-marker");
+    for (var k = 0; k < leftovers.length; k++) {
+      leftovers[k].parentNode.removeChild(leftovers[k]);
+    }
+
+    // Group consecutive bulleted paragraphs into lists
     var groups = [];
     var currentGroup = null;
-
-    for (var i = 0; i < items.length; i++) {
-      var item = items[i];
-      var prev = i > 0 ? items[i - 1] : null;
-
-      // Check if this item immediately follows the previous one in DOM
-      var isConsecutive = false;
-      if (prev) {
-        var el = prev.element.nextElementSibling;
-        // Skip whitespace-only text nodes
-        while (
-          el &&
-          el !== item.element &&
-          el.nodeType === 3 &&
-          !(el.textContent || "").trim()
-        ) {
-          el = el.nextElementSibling;
-        }
-        isConsecutive = el === item.element;
-      }
-
-      if (!currentGroup || !isConsecutive) {
+    for (var j = 0; j < bullets.length; j++) {
+      var prev = j > 0 ? bullets[j - 1] : null;
+      if (!currentGroup || prev.element.nextElementSibling !== bullets[j].element) {
         currentGroup = [];
         groups.push(currentGroup);
       }
-      currentGroup.push(item);
+      currentGroup.push(bullets[j]);
     }
 
-    // Now replace each group with proper list elements
     for (var g = 0; g < groups.length; g++) {
       var group = groups[g];
-      var rootList = buildNestedList(group);
-
-      // Insert the list before the first paragraph in the group
       var firstPara = group[0].element;
-      firstPara.parentNode.insertBefore(rootList, firstPara);
-
-      // Remove the original paragraphs
-      for (var j = 0; j < group.length; j++) {
-        if (group[j].element.parentNode) {
-          group[j].element.parentNode.removeChild(group[j].element);
-        }
+      firstPara.parentNode.insertBefore(buildNestedList(group), firstPara);
+      for (var m = 0; m < group.length; m++) {
+        group[m].element.parentNode.removeChild(group[m].element);
       }
     }
   }
 
-  /** Build a (possibly nested) <ul>/<ol> from a group of list items. */
+  /**
+   * Read Word's list definitions from the <style> block, for example
+   *   @list l0:level1 {mso-level-number-format:bullet; ...}
+   * Returns "l0:1" → true for bulleted levels, false for numbered ones.
+   */
+  function parseListDefinitions(html) {
+    var defs = {};
+    var re = /@list\s+(l\d+):level(\d+)\s*\{([^}]*)\}/gi;
+    var m;
+    while ((m = re.exec(html)) !== null) {
+      defs[m[1].toLowerCase() + ":" + m[2]] =
+        /mso-level-number-format\s*:\s*(bullet|image)/i.test(m[3]);
+    }
+    return defs;
+  }
+
+  /**
+   * Find the element holding a paragraph's list marker: the span preCleanHTML
+   * made from the supportLists comments, or, when the comments were already
+   * stripped, Word's <span style="mso-list:Ignore"> and the spans that only
+   * wrap it.
+   */
+  function findListMarker(p) {
+    var marker = p.querySelector("span.__list-marker");
+    if (marker) return marker;
+
+    var spans = p.getElementsByTagName("span");
+    for (var i = 0; i < spans.length; i++) {
+      if (/mso-list\s*:\s*ignore/i.test(spans[i].getAttribute("style") || "")) {
+        marker = spans[i];
+        while (
+          marker.parentNode !== p &&
+          marker.parentNode.tagName === "SPAN" &&
+          marker.parentNode.textContent === marker.textContent
+        ) {
+          marker = marker.parentNode;
+        }
+        return marker;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * The style of the first element in the marker that carries formatting
+   * (font, size, colour), so a literal number looks the way Word showed it.
+   * Word's padding spans only set the "font" shorthand, which cleanStyle drops.
+   */
+  function findMarkerStyle(marker) {
+    var els = [marker].concat(
+      Array.prototype.slice.call(marker.getElementsByTagName("*"))
+    );
+    for (var i = 0; i < els.length; i++) {
+      var style = els[i].getAttribute("style");
+      if (style && cleanStyle(style)) return style;
+    }
+    return "";
+  }
+
+  /**
+   * Fallback when the list definitions are missing: a bullet is a single
+   * bullet-like character, or anything set in a symbol font.
+   */
+  function isBulletMarker(text, marker) {
+    if (/font-family\s*:\s*["']?(Symbol|Wingdings|Webdings)/i.test(marker.outerHTML)) {
+      return true;
+    }
+    // · • ‣ ◦ ▪ ▫ ■ □ ● ○ ◆ ◇ ► ▸ ➢ ➤ ✓ ✔ § Ø ü o * – — -
+    return /^[·•‣◦▪▫■□●○◆◇►▸➢➤✓✔§Øüo*–—-]$/.test(text);
+  }
+
+  /** True when the paragraph has text or an image, table or line break. */
+  function hasContent(p) {
+    return (
+      (p.textContent || "").replace(/[\s ]+/g, "") !== "" ||
+      !!p.querySelector("img, table, br")
+    );
+  }
+
+  /**
+   * Word lays a list paragraph out as a hanging indent: a left margin with a
+   * negative text-indent, sized for the number and a tab. With the number
+   * inline that only shifts the first line (in a table cell, out of the
+   * cell). Drop it, and indent nested levels a little instead.
+   */
+  function dropHangingIndent(p, level) {
+    var style = (p.getAttribute("style") || "").replace(
+      /(^|;)\s*(text-indent|margin-left|mso-text-indent-alt)\s*:[^;]*/gi,
+      "$1"
+    );
+    if (level > 1) style += ";padding-left:" + (level - 1) * 0.25 + "in";
+    p.setAttribute("style", style);
+  }
+
+  /** Build a (possibly nested) <ul> from a group of bulleted items. */
   function buildNestedList(items) {
-    var rootList = document.createElement(items[0].ordered ? "ol" : "ul");
-    var stack = [{ list: rootList, level: 1 }];
+    var ownerDoc = items[0].element.ownerDocument;
+    var rootList = ownerDoc.createElement("ul");
+    var stack = [{ list: rootList, level: items[0].level }];
 
     for (var i = 0; i < items.length; i++) {
       var item = items[i];
-      var li = document.createElement("li");
+      var li = ownerDoc.createElement("li");
       li.innerHTML = item.content;
 
       while (stack.length > 1 && stack[stack.length - 1].level >= item.level) {
@@ -400,11 +461,11 @@
 
       if (item.level > stack[stack.length - 1].level) {
         // Need to nest deeper
-        var subList = document.createElement(item.ordered ? "ol" : "ul");
+        var subList = ownerDoc.createElement("ul");
         var parentList = stack[stack.length - 1].list;
         var lastLi = parentList.lastElementChild;
         if (!lastLi) {
-          lastLi = document.createElement("li");
+          lastLi = ownerDoc.createElement("li");
           parentList.appendChild(lastLi);
         }
         lastLi.appendChild(subList);
@@ -647,11 +708,14 @@
 
   /** Pre-process raw HTML string before DOM parsing. */
   function preCleanHTML(html) {
-    // Remove conditional comments: <!--[if ...]>...<![endif]-->
-    html = html.replace(/<!--\[if\s+!supportLists\]-->([\s\S]*?)<!--\[endif\]-->/gi, function(match, inner) {
-      // Preserve list markers — we'll handle them in convertLists
+    // Preserve list markers — we'll handle them in convertLists. Word's
+    // clipboard writes them as <![if !supportLists]>…<![endif]>, saved and
+    // emailed HTML as <!--[if !supportLists]-->…<!--[endif]-->.
+    html = html.replace(/<!(?:--)?\[if\s+!supportLists\](?:--)?>([\s\S]*?)<!(?:--)?\[endif\](?:--)?>/gi, function(match, inner) {
       return '<span class="__list-marker">' + inner + '</span>';
     });
+
+    // Remove conditional comments: <!--[if ...]>...<![endif]-->
     html = html.replace(/<!--\[if[\s\S]*?\]>[\s\S]*?<!\[endif\]-->/gi, "");
     html = html.replace(/<!--[\s\S]*?-->/g, "");
 
@@ -692,12 +756,6 @@
         }
       }
     }
-
-    // Remove stray list-marker spans we inserted during pre-processing
-    var markers = doc.querySelectorAll("span.__list-marker");
-    for (var i = 0; i < markers.length; i++) {
-      markers[i].parentNode && markers[i].parentNode.removeChild(markers[i]);
-    }
   }
 
   // ────────────── main clean function ────────────────────────
@@ -713,15 +771,18 @@
     if (!html) return "";
 
     var fromWord = isWordHTML(html);
+    var listDefs = {};
 
     if (fromWord) {
+      // Read before preCleanHTML removes the <head> they live in
+      listDefs = parseListDefinitions(html);
       html = preCleanHTML(html);
     }
 
     var doc = parseHTML(html);
 
     if (fromWord) {
-      convertLists(doc.body);
+      convertLists(doc.body, listDefs);
     }
 
     // Walk and clean all nodes

@@ -1,16 +1,18 @@
 {
   "name": "word-paste-editor",
-  "version": "1.0.2",
-  "description": "A zero-dependency, toolbar-free HTML editor that properly handles paste from Microsoft Word — preserving tables, cell colors, fonts, formatting, and more.",
+  "version": "1.1.0",
+  "description": "A zero-dependency HTML editor that properly handles paste from Microsoft Word — preserving tables, cell colors, fonts, formatting, and more. Toolbar-free by default, with an optional formatting toolbar.",
   "main": "dist/editor.js",
   "exports": {
     ".": "./dist/editor.js",
-    "./cleaner": "./dist/word-cleaner.js"
+    "./cleaner": "./dist/word-cleaner.js",
+    "./toolbar.css": "./dist/toolbar.css"
   },
   "files": [
     "dist/",
     "editor.js",
     "word-cleaner.js",
+    "toolbar.css",
     "editor.html",
     "LICENSE",
     "README.md"
@@ -20,7 +22,8 @@
     "build:cleaner": "terser word-cleaner.js -o dist/word-cleaner.min.js --comments \"/^!/\" --compress --mangle",
     "copy:editor": "node -e \"require('fs').copyFileSync('editor.js','dist/editor.js')\"",
     "copy:cleaner": "node -e \"require('fs').copyFileSync('word-cleaner.js','dist/word-cleaner.js')\"",
-    "build": "node -e \"require('fs').mkdirSync('dist',{recursive:true})\" && npm run copy:editor && npm run copy:cleaner && npm run build:editor && npm run build:cleaner",
+    "copy:css": "node -e \"require('fs').copyFileSync('toolbar.css','dist/toolbar.css')\"",
+    "build": "node -e \"require('fs').mkdirSync('dist',{recursive:true})\" && npm run copy:editor && npm run copy:cleaner && npm run copy:css && npm run build:editor && npm run build:cleaner",
     "demo": "npx serve ."
   },
   "repository": {
@@ -36,7 +39,8 @@
     "sanitizer",
     "contenteditable",
     "clipboard",
-    "word-to-html"
+    "word-to-html",
+    "toolbar"
   ],
   "author": "Hussein Al Bayati",
   "license": "MIT",
